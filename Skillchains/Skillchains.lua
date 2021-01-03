@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 _addon.author = 'Ivaar';
 _addon.name = 'SkillChains';
-_addon.version = '1.18.03.01';
+_addon.version = '1.20.08.19';
 
 require 'common';
 require 'timer';
@@ -55,7 +55,8 @@ function S(list)
 end
 
 aeonic_weapon = S{20515,20594,20695,20843,20890,20935,20977,21025,21082,21147,21485,21694,21753,22117};
-message_ids = S{2,110,161,162,185,187,317};
+message_ids = S{2,110,161,162,185,187,317,802};
+pet_commands = S{110,317};
 buff_dur = {[163]=40,[164]=30,[470]=60};
 info = {member = {}};
 
@@ -87,23 +88,23 @@ colors.Impaction =     colors.Lightning;
 skillchain = {'Light','Darkness','Gravitation','Fragmentation','Distortion','Fusion','Compression','Liquefaction','Induration','Reverberation','Transfixion','Scission','Detonation','Impaction','Radiance','Umbra'};
 
 sc_info = {
-    Radiance = {ele={'Fire','Wind','Lightning','Light'}, lvl=4},
-    Umbra = {ele={'Earth','Ice','Water','Dark'}, lvl=4},
-    Light = {ele={'Fire','Wind','Lightning','Light'}, Light='Light', aeonic='Radiance', lvl=3},
-    Darkness = {ele={'Earth','Ice','Water','Dark'}, Darkness='Darkness', aeonic='Umbra', lvl=3},
-    Gravitation = {ele={'Earth','Dark'}, Distortion='Darkness', Fragmentation='Fragmentation', lvl=2},
-    Fragmentation = {ele={'Wind','Lightning'}, Fusion='Light', Distortion='Distortion', lvl=2},
-    Distortion = {ele={'Ice','Water'}, Gravitation='Darkness', Fusion='Fusion', lvl=2},
-    Fusion = {ele={'Fire','Light'}, Fragmentation='Light', Gravitation='Gravitation', lvl=2},
-    Compression = {ele={'Darkness'}, Transfixion='Transfixion', Detonation='Detonation', lvl=1},
-    Liquefaction = {ele={'Fire'}, Impaction='Fusion', Scission='Scission', lvl=1},
-    Induration = {ele={'Ice'}, Reverberation='Fragmentation', Compression='Compression', Impaction='Impaction', lvl=1},
-    Reverberation = {ele={'Water'}, Induration='Induration', Impaction='Impaction', lvl=1},
-    Transfixion = {ele={'Light'}, Scission='Distortion', Reverberation='Reverberation', Compression='Compression', lvl=1},
-    Scission = {ele={'Earth'}, Liquefaction='Liquefaction', Reverberation='Reverberation', Detonation='Detonation', lvl=1},
-    Detonation = {ele={'Wind'}, Compression='Gravitation', Scission='Scission', lvl=1},
-    Impaction = {ele={'Lightning'}, Liquefaction='Liquefaction', Detonation='Detonation', lvl=1},
-    };
+    Radiance = {'Fire','Wind','Lightning','Light', lvl=4},
+    Umbra = {'Earth','Ice','Water','Dark', lvl=4},
+    Light = {'Fire','Wind','Lightning','Light', Light={4,'Light'}, aeonic={4,'Radiance'}, lvl=3},
+    Darkness = {'Earth','Ice','Water','Dark', Darkness={4,'Darkness'}, aeonic={4,'Umbra'}, lvl=3},
+    Gravitation = {'Earth','Dark', Distortion={3,'Darkness'}, Fragmentation={2,'Fragmentation'}, lvl=2},
+    Fragmentation = {'Wind','Lightning', Fusion={3,'Light'}, Distortion={2,'Distortion'}, lvl=2},
+    Distortion = {'Ice','Water', Gravitation={3,'Darkness'}, Fusion={2,'Fusion'}, lvl=2},
+    Fusion = {'Fire','Light', Fragmentation={3,'Light'}, Gravitation={2,'Gravitation'}, lvl=2},
+    Compression = {'Darkness', Transfixion={1,'Transfixion'}, Detonation={1,'Detonation'}, lvl=1},
+    Liquefaction = {'Fire', Impaction={2,'Fusion'}, Scission={1,'Scission'}, lvl=1},
+    Induration = {'Ice', Reverberation={2,'Fragmentation'}, Compression={1,'Compression'}, Impaction={1,'Impaction'}, lvl=1},
+    Reverberation = {'Water', Induration={1,'Induration'}, Impaction={1,'Impaction'}, lvl=1},
+    Transfixion = {'Light', Scission={2,'Distortion'}, Reverberation={1,'Reverberation'}, Compression={1,'Compression'}, lvl=1},
+    Scission = {'Earth', Liquefaction={1,'Liquefaction'}, Reverberation={1,'Reverberation'}, Detonation={1,'Detonation'}, lvl=1},
+    Detonation = {'Wind', Compression={2,'Gravitation'}, Scission={1,'Scission'}, lvl=1},
+    Impaction = {'Lightning', Liquefaction={1,'Liquefaction'}, Detonation={1,'Detonation'}, lvl=1},
+};
 
 ashita.register_event('unload', function()
     local display = AshitaCore:GetFontManager():Get('skill_props');
@@ -146,7 +147,9 @@ ashita.register_event('load', function()
     initialize();
     if setting.weapon then
         local equip = AshitaCore:GetDataManager():GetInventory():GetEquippedItem(0).ItemIndex;
-        update_weapon(math.floor(equip/256), math.floor(equip%256));
+        info.main_bag = math.floor(equip/256);
+        info.main =  math.floor(equip%256);
+        update_weapon();
         info.weapon_skills = {};
         for k = 1, 239 do
             if skills[3][k] and player:HasWeaponSkill(k) then
@@ -156,10 +159,11 @@ ashita.register_event('load', function()
     end
 end);
 
-function update_weapon(bag, ind)
-    local main_weapon = AshitaCore:GetDataManager():GetInventory():GetItem(bag, ind).Id;
+function update_weapon()
+    local main_weapon = AshitaCore:GetDataManager():GetInventory():GetItem(info.main_bag, info.main).Id;
     if main_weapon ~= 0 then
-        info.aeonic = aeonic_weapon[main_weapon];
+        info.aeonic = aeonic_weapon[main_weapon] or
+            info.range and aeonic_weapon[AshitaCore:GetDataManager():GetInventory():GetItem(info.range_bag, info.range).Id];
         return;
     end
     if not check_weapon then
@@ -187,12 +191,17 @@ function aeonic_prop(ability, actor)
 end
 
 function check_props(old, new)
-    local n = #old < 4 and #new or 1
     for k = 1, #old do
-        for i = 1, n do
-            local v = sc_info[old[k]][new[i]];
-            if v then
-                return sc_info[v].lvl == 3 and old[k] == new[i] and 4 or sc_info[v].lvl, v;
+        local first = old[k]
+        local combo = sc_info[first]
+        for i = 1, #new do
+            local second = new[i]
+            local result = combo[second]
+            if result then
+                return unpack(result)
+            end
+            if #old > 3 and combo.lvl == sc_info[second].lvl then
+                break
             end
         end
     end
@@ -262,7 +271,7 @@ ashita.register_event('render', function()
                 table.insert(resonating[targ_id].disp_info, string.format('Step: %d >> %s', resonating[targ_id].step, resonating[targ_id].en));
             end
             local props = setting.props and (not resonating[targ_id].bound and colorize(resonating[targ_id].active) or string.format('Chainbound Lv.%d', resonating[targ_id].bound));
-            local burst = setting.burst and resonating[targ_id].step > 1 and colorize(sc_info[resonating[targ_id].active[1]].ele);
+            local burst = setting.burst and resonating[targ_id].step > 1 and colorize(sc_info[resonating[targ_id].active[1]]);
             if props and burst then
                 table.insert(resonating[targ_id].disp_info, string.format('[%s] (%s)', props, burst));
             elseif props then
@@ -313,21 +322,33 @@ ashita.register_event('incoming_packet', function(id, size, data)
     elseif id == 0x28 then
         local actor = struct.unpack('I', data, 6);
         local category = ashita.bits.unpack_be(data, 82, 4);
-        local ability = skills[category] and skills[category][ashita.bits.unpack_be(data, 86, 16)];
+        local param = ashita.bits.unpack_be(data, 86, 16);
         local effect = ashita.bits.unpack_be(data, 213, 17);
+        local msg = ashita.bits.unpack_be(data, 230, 10);
+        category = pet_commands[msg] and 13 or category
+        local ability = skills[category] and skills[category][param]
+        
         if ability and (category ~= 4 or buffs[actor] and chain_buff(buffs[actor]) or ashita.bits.unpack_be(data, 271, 1) == 1) then
             local mob = ashita.bits.unpack_be(data, 150, 32);
-            local msg = ashita.bits.unpack_be(data, 230, 10);
             local prop = skillchain[ashita.bits.unpack_be(data,272, 6)];
             if prop then
-                local step = (resonating[mob] and resonating[mob].step or 1) + 1;
-                local closed = step > 5 or sc_info[prop].lvl > 2 and 
-                    (sc_info[prop].lvl == 4 or resonating[mob] and check_props(resonating[mob].active, aeonic_prop(ability, actor)) == 4);
-                resonating[mob] = {en=ability.en, active={prop}, ts=os.time(), dur=11-step, wait=3, step=step, closed=closed};
+                local level = sc_info[prop].lvl
+                local reson = resonating[mob]
+                local delay = ability and ability.delay or 3
+                local step = (reson and reson.step or 1) + 1
+
+                if level == 3 and reson and ability then
+                    level = check_props(reson.active, aeonic_prop(ability, actor))
+                end
+
+                local closed = step > 5 or level == 4
+
+                resonating[mob] = {en=ability.en, active={prop}, ts=os.time(), dur=8-step+delay, wait=delay, step=step, closed=closed};
             elseif message_ids[msg] then
-                resonating[mob] = {en=ability.en, active=aeonic_prop(ability, actor), ts=os.time(), dur=10, wait=3, step=1};
+                local delay = ability and ability.delay or 3
+                resonating[mob] = {en=ability.en, active=aeonic_prop(ability, actor), ts=os.time(), dur=7+delay, wait=delay, step=1};
             elseif msg == 529 then
-                resonating[mob] = {en=ability.en, active=ability.skillchain, ts=os.time(), dur=ability.dur, wait=1, step=1, bound=effect};
+                resonating[mob] = {en=ability.en, active=ability.skillchain, ts=os.time(), dur=9, wait=2, step=1, bound=effect};
             end
         elseif category == 6 and buff_dur[effect] then
             buffs[actor] = buffs[actor] or {};
@@ -339,7 +360,13 @@ ashita.register_event('incoming_packet', function(id, size, data)
             buffs[info.player][effect] = nil;
         end
     elseif id == 0x50 and setting.weapon and data:byte(6) == 0 then
-        update_weapon(data:byte(7), data:byte(5));
+        info.main = data:byte(5);
+        info.main_bag = data:byte(7);
+        update_weapon();
+    elseif id == 0x50 and data:byte(6) == 2 then
+        info.range = data:byte(5);
+        info.range_bag = data:byte(7);
+        update_weapon();
     elseif id == 0x63 and data:byte(5) == 9 then
         local set_buff = {};
         for n=1,32 do
@@ -383,7 +410,7 @@ ashita.register_event('incoming_packet', function(id, size, data)
         info.lastAC = data:sub(5);
     elseif id == 0x44 and data:byte(5) == 0x10 and data:byte(6) == 0 and setting.spell and data:sub(9, 18) ~= info.last44 then
         local t = {};
-        for x = 9, 18 do
+        for x = 9, 28 do
             if skills[4][data:byte(x)+512] then
                t[#t+1] = skills[4][data:byte(x)+512];
             end
